@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Manuel Ses İletimi</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; background: #f4f4f4; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        textarea { width: 100%; height: 120px; margin-bottom: 10px; font-size: 12px; }
+        button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; margin-right: 5px; margin-bottom: 10px;}
+        button:disabled { background: #ccc; }
+        h3 { margin-top: 20px; }
+        .status { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📡 Yerel Ses Aktarımı (Serverless)</h2>
+    <p>Bu yöntemle sinyalleşme verilerini manuel kopyalayarak bağlantı kuracağız.</p>
+    
+    <div id="step1">
+        <h3>1. Mikrofonu Hazırla</h3>
+        <button id="startBtn">Mikrofonu Aç</button>
+        <span id="micStatus">🔴 Kapalı</span>
+    </div>
+
+    <div id="step2">
+        <h3>2. Bağlantı Kur (Sinyalleşme)</h3>
+        <p><strong>A Cihazı (Başlatan):</strong> "Teklif Oluştur"a bas, kodu kopyala ve B'ye gönder.</p>
+        <button id="offerBtn" disabled>1. Teklif (Offer) Oluştur</button>
+        
+        <p><strong>B Cihazı (Alıcı):</strong> A'dan gelen kodu aşağıya yapıştır ve "Yanıtla"ya bas.</p>
+        <textarea id="sdpInput" placeholder="Buraya karşı taraftan gelen kodu yapıştırın..."></textarea>
+        
+        <button id="answerBtn" disabled>2. Teklifi Yanıtla (Answer)</button>
+        <button id="acceptAnswerBtn" disabled>3. Yanıtı Kabul Et (Son Adım)</button>
+    </div>
+
+    <div>
+        <h3>Bağlantı Durumu: <span id="connStatus" style="color: orange;">Bekleniyor...</span></h3>
+        <audio id="remoteAudio" autoplay controls></audio>
+    </div>
+</div>
+
+<script>
+    let localStream;
+    let peerConnection;
+    const config = { iceServers: [] }; // Sadece yerel ağ (LAN) için STUN gerekmez
+
+    const startBtn = document.getElementById('startBtn');
+    const offerBtn = document.getElementById('offerBtn');
+    const answerBtn = document.getElementById('answerBtn');
+    const acceptAnswerBtn = document.getElementById('acceptAnswerBtn');
+    const sdpInput = document.getElementById('sdpInput');
+    const connStatus = document.getElementById('connStatus');
+    const remoteAudio = document.getElementById('remoteAudio');
+
+    // 1. MİKROFONU AÇ
+    startBtn.onclick = async () => {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            document.getElementById('micStatus').innerText = "🟢 Mikrofon Aktif";
+            offerBtn.disabled = false;
+            answerBtn.disabled = false;
+            startBtn.disabled = true;
+        } catch (e) {
+            alert("Mikrofon erişimi reddedildi! (HTTPS kullandığınızdan emin olun)");
+        }
+    };
+
+    function createPeer() {
+        peerConnection = new RTCPeerConnection(config);
+        
+        // Ses izini bağlantıya ekle
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+        // Karşıdan ses geldiğinde oynat
+        peerConnection.ontrack = (event) => {
+            remoteAudio.srcObject = event.streams[0];
+            connStatus.innerText = "Bağlantı Kuruldu! ✅";
+        };
+
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log("Bağlantı Durumu:", peerConnection.iceConnectionState);
+        };
+    }
+
+    // A CİHAZI: TEKLİF OLUŞTUR
+    offerBtn.onclick = async () => {
+        createPeer();
+        // Manuel gönderim için tüm ICE adaylarının toplanmasını beklemeliyiz
+        peerConnection.onicecandidate = (e) => {
+            if (!e.candidate) {
+                sdpInput.value = JSON.stringify(peerConnection.localDescription);
+                alert("Teklif kodu oluşturuldu! Şimdi bu kodu kopyalayıp B cihazına yapıştırın.");
+                acceptAnswerBtn.disabled = false;
+            }
+        };
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+    };
+
+    // B CİHAZI: TEKLİFİ YANITLA
+    answerBtn.onclick = async () => {
+        const offer = JSON.parse(sdpInput.value);
+        createPeer();
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        peerConnection.onicecandidate = (e) => {
+            if (!e.candidate) {
+                sdpInput.value = JSON.stringify(peerConnection.localDescription);
+                alert("Yanıt kodu oluşturuldu! Şimdi bu kodu kopyalayıp tekrar A cihazına yapıştırın.");
+            }
+        };
+    };
+
+    // A CİHAZI: SON ADIM (YANITI KABUL ET)
+    acceptAnswerBtn.onclick = async () => {
+        const answer = JSON.parse(sdpInput.value);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        connStatus.innerText = "Bağlanıyor...";
+    };
+
+</script>
+</body>
+</html>
