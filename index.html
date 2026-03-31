@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gecikmesiz Yerel İnterkom</title>
+    <title>Gecikmesiz Yerel İnterkom (Diyet SDP)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
@@ -14,8 +14,8 @@
         .btn-mic { background: #1a73e8; color: white; }
         .btn-offer { background: #e91e63; color: white; }
         .btn-scan { background: #4caf50; color: white; }
-        #status { margin: 15px 0; font-weight: bold; color: #555; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
-        #qrcode { display: flex; justify-content: center; margin: 15px 0; border: 2px solid #eee; padding: 5px; }
+        #status { margin: 15px 0; font-weight: bold; color: #555; border: 1px solid #ddd; padding: 10px; border-radius: 5px; min-height: 20px;}
+        #qrcode { display: flex; justify-content: center; margin: 15px 0; }
         #reader { width: 100%; border-radius: 8px; margin-top: 10px; display: none; }
         audio { display: none; }
     </style>
@@ -35,13 +35,12 @@
         <div id="reader"></div>
     </div>
 
-    <audio id="remoteAudio" autoplay controls></audio>
+    <audio id="remoteAudio" autoplay></audio>
 </div>
 
 <script>
     let localStream;
     let peerConnection;
-    // iceServers: [] yaparak internet bağımlılığını (STUN) kaldırıyoruz
     const pcConfig = { iceServers: [] }; 
 
     const status = document.getElementById('status');
@@ -60,63 +59,68 @@
         }
     };
 
-    // PeerConnection Başlatma
+    // SDP DİYETİ: Gereksiz satırları temizleyen fonksiyon
+    function shrinkSDP(sdp) {
+        return sdp.split('\n')
+            .filter(line => 
+                line.indexOf('a=fmtp') === -1 && 
+                line.indexOf('a=rtcp-fb') === -1 && 
+                line.indexOf('a=extmap') === -1 && 
+                line.indexOf('a=msid') === -1 &&
+                line.indexOf('a=ssrc') === -1
+            ).join('\n');
+    }
+
     function initPeer() {
         if (peerConnection) return;
         peerConnection = new RTCPeerConnection(pcConfig);
-        
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-        peerConnection.ontrack = (event) => {
-            document.getElementById('remoteAudio').srcObject = event.streams[0];
+        peerConnection.ontrack = (e) => {
+            document.getElementById('remoteAudio').srcObject = e.streams[0];
             status.innerText = "SES BAĞLANDI! 🎙️⚡";
             status.style.color = "green";
         };
     }
 
-    // QR Kod Üretme
     function makeQR(data) {
         qrcodeDiv.innerHTML = "";
+        // SDP'yi temizle (Diyet yap)
+        const smallSDP = shrinkSDP(data);
         new QRCode(qrcodeDiv, {
-            text: data,
+            text: smallSDP,
             width: 250,
             height: 250,
-            correctLevel: QRCode.CorrectLevel.L // Veri yoğunluğunu azaltmak için düşük hata payı
+            correctLevel: QRCode.CorrectLevel.L 
         });
     }
 
-    // A CİHAZI: Teklif Oluştur
     document.getElementById('offerBtn').onclick = async () => {
         initPeer();
         status.innerText = "QR Hazırlanıyor...";
-
-        // İnternet yoksa ICE adaylarını beklemek yerine 1 sn sonra QR oluşturmayı zorla
-        let forced = false;
-        const forceGenerate = () => {
-            if (forced) return;
-            forced = true;
-            makeQR(JSON.stringify(peerConnection.localDescription));
-            status.innerText = "Teklif QR Hazır! B'ye taratın.";
-        };
-
-        peerConnection.onicecandidate = (e) => {
-            if (!e.candidate) forceGenerate(); // Aday toplama bittiğinde
-        };
         
-        setTimeout(forceGenerate, 1500); // Yedek zamanlayıcı
+        peerConnection.onicecandidate = (e) => {
+            if (!e.candidate) {
+                makeQR(JSON.stringify(peerConnection.localDescription));
+                status.innerText = "Teklif QR Hazır! B'ye taratın.";
+            }
+        };
 
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
+        
+        // Aday toplanmazsa 1.5 sn sonra zorla oluştur
+        setTimeout(() => {
+            if (qrcodeDiv.innerHTML === "") {
+                makeQR(JSON.stringify(peerConnection.localDescription));
+                status.innerText = "Teklif QR (Hızlı) Hazır!";
+            }
+        }, 1500);
     };
 
-    // B CİHAZI: Tarayıcıyı Aç
     document.getElementById('scanBtn').onclick = () => {
         readerDiv.style.display = "block";
         const scanner = new Html5Qrcode("reader");
-        
-        scanner.start(
-            { facingMode: "environment" },
-            { fps: 10, qrbox: 250 },
+        scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 },
             async (text) => {
                 await scanner.stop();
                 readerDiv.style.display = "none";
@@ -125,32 +129,28 @@
         ).catch(err => status.innerText = "Kamera hatası!");
     };
 
-    // Sinyal İşleme (Gelen QR verisi)
     async function processSignal(signal) {
         initPeer();
-
         if (signal.type === "offer") {
-            // Teklifi Al ve Yanıt QR Üret
             status.innerText = "Teklif alındı, yanıt hazırlanıyor...";
             await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
-
-            let forced = false;
-            const forceAnswer = () => {
-                if (forced) return;
-                forced = true;
-                makeQR(JSON.stringify(peerConnection.localDescription));
-                status.innerText = "Yanıt QR Hazır! A'ya geri taratın.";
-            };
-
+            
             peerConnection.onicecandidate = (e) => {
-                if (!e.candidate) forceAnswer();
+                if (!e.candidate) {
+                    makeQR(JSON.stringify(peerConnection.localDescription));
+                    status.innerText = "Yanıt QR Hazır! A'ya geri taratın.";
+                }
             };
-            setTimeout(forceAnswer, 1500);
+            setTimeout(() => {
+                if (qrcodeDiv.innerHTML === "") {
+                    makeQR(JSON.stringify(peerConnection.localDescription));
+                    status.innerText = "Yanıt QR (Hızlı) Hazır!";
+                }
+            }, 1500);
 
         } else if (signal.type === "answer") {
-            // Yanıtı Al (Bağlantı Kurulur)
             await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
             status.innerText = "Eşleşme tamamlandı!";
         }
