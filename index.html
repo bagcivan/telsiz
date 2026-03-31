@@ -3,99 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Manuel Ses İletimi</title>
+    <title>QR Interkom - Serverless</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; background: #f4f4f4; }
-        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        textarea { width: 100%; height: 120px; margin-bottom: 10px; font-size: 12px; }
-        button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; margin-right: 5px; margin-bottom: 10px;}
-        button:disabled { background: #ccc; }
-        h3 { margin-top: 20px; }
-        .status { color: green; font-weight: bold; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eceff1; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        h2 { color: #1a73e8; text-align: center; margin-bottom: 5px; }
+        p { font-size: 14px; color: #5f6368; text-align: center; }
+        .section { border-top: 1px solid #eee; margin-top: 20px; padding-top: 20px; }
+        button { width: 100%; padding: 12px; margin: 8px 0; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-prime { background: #1a73e8; color: white; }
+        .btn-scan { background: #34a853; color: white; }
+        .btn-prime:disabled { background: #ccc; }
+        #qrcode { display: flex; justify-content: center; margin: 15px 0; }
+        #reader { width: 100%; border-radius: 10px; overflow: hidden; margin-top: 15px; display: none; }
+        #status { text-align: center; font-weight: bold; margin-top: 15px; color: #f4b400; }
+        textarea { width: 100%; height: 60px; margin-top: 10px; font-size: 10px; display: none; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>📡 Yerel Ses Aktarımı (Serverless)</h2>
-    <p>Bu yöntemle sinyalleşme verilerini manuel kopyalayarak bağlantı kuracağız.</p>
+<div class="card">
+    <h2>📡 QR Ses Aktarımı</h2>
+    <p>Aynı ağdaki iki telefon arasında gecikmesiz ses.</p>
     
-    <div id="step1">
-        <h3>1. Mikrofonu Hazırla</h3>
-        <button id="startBtn">Mikrofonu Aç</button>
-        <span id="micStatus">🔴 Kapalı</span>
+    <div id="status">Lütfen mikrofonu açın</div>
+    <button id="startBtn" class="btn-prime">1. Mikrofonu Etkinleştir</button>
+
+    <div class="section" id="mainSection" style="display:none;">
+        <button id="makeOfferBtn" class="btn-prime">2. Teklif Oluştur (A Cihazı)</button>
+        <div id="qrcode"></div>
+
+        <button id="startScanBtn" class="btn-scan">3. QR Kod Tara (B Cihazı)</button>
+        <div id="reader"></div>
     </div>
 
-    <div id="step2">
-        <h3>2. Bağlantı Kur (Sinyalleşme)</h3>
-        <p><strong>A Cihazı (Başlatan):</strong> "Teklif Oluştur"a bas, kodu kopyala ve B'ye gönder.</p>
-        <button id="offerBtn" disabled>1. Teklif (Offer) Oluştur</button>
-        
-        <p><strong>B Cihazı (Alıcı):</strong> A'dan gelen kodu aşağıya yapıştır ve "Yanıtla"ya bas.</p>
-        <textarea id="sdpInput" placeholder="Buraya karşı taraftan gelen kodu yapıştırın..."></textarea>
-        
-        <button id="answerBtn" disabled>2. Teklifi Yanıtla (Answer)</button>
-        <button id="acceptAnswerBtn" disabled>3. Yanıtı Kabul Et (Son Adım)</button>
-    </div>
-
-    <div>
-        <h3>Bağlantı Durumu: <span id="connStatus" style="color: orange;">Bekleniyor...</span></h3>
-        <audio id="remoteAudio" autoplay controls></audio>
-    </div>
+    <audio id="remoteAudio" autoplay controls style="display:none;"></audio>
+    <textarea id="sdpBox"></textarea>
 </div>
 
 <script>
     let localStream;
     let peerConnection;
-    const config = { iceServers: [] }; // Sadece yerel ağ (LAN) için STUN gerekmez
+    const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    
+    const sdpBox = document.getElementById('sdpBox');
+    const status = document.getElementById('status');
+    const qrcodeDiv = document.getElementById('qrcode');
+    const readerDiv = document.getElementById('reader');
 
-    const startBtn = document.getElementById('startBtn');
-    const offerBtn = document.getElementById('offerBtn');
-    const answerBtn = document.getElementById('answerBtn');
-    const acceptAnswerBtn = document.getElementById('acceptAnswerBtn');
-    const sdpInput = document.getElementById('sdpInput');
-    const connStatus = document.getElementById('connStatus');
-    const remoteAudio = document.getElementById('remoteAudio');
-
-    // 1. MİKROFONU AÇ
-    startBtn.onclick = async () => {
+    // 1. Mikrofon Erişimi
+    document.getElementById('startBtn').onclick = async () => {
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            document.getElementById('micStatus').innerText = "🟢 Mikrofon Aktif";
-            offerBtn.disabled = false;
-            answerBtn.disabled = false;
-            startBtn.disabled = true;
+            status.innerText = "Mikrofon Hazır! ✅";
+            document.getElementById('mainSection').style.display = "block";
+            document.getElementById('startBtn').style.display = "none";
         } catch (e) {
-            alert("Mikrofon erişimi reddedildi! (HTTPS kullandığınızdan emin olun)");
+            status.innerText = "Hata: Mikrofon izni alınamadı.";
         }
     };
 
-    function createPeer() {
+    function initPeer() {
         peerConnection = new RTCPeerConnection(config);
-        
-        // Ses izini bağlantıya ekle
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-        // Karşıdan ses geldiğinde oynat
+        
         peerConnection.ontrack = (event) => {
-            remoteAudio.srcObject = event.streams[0];
-            connStatus.innerText = "Bağlantı Kuruldu! ✅";
-        };
-
-        peerConnection.oniceconnectionstatechange = () => {
-            console.log("Bağlantı Durumu:", peerConnection.iceConnectionState);
+            document.getElementById('remoteAudio').srcObject = event.streams[0];
+            status.innerText = "BAĞLANDI! 🎙️";
+            status.style.color = "green";
         };
     }
 
-    // A CİHAZI: TEKLİF OLUŞTUR
-    offerBtn.onclick = async () => {
-        createPeer();
-        // Manuel gönderim için tüm ICE adaylarının toplanmasını beklemeliyiz
+    // A CİHAZI: TEKLİF OLUŞTUR VE QR GÖSTER
+    document.getElementById('makeOfferBtn').onclick = async () => {
+        initPeer();
+        status.innerText = "Teklif hazırlanıyor...";
+        
         peerConnection.onicecandidate = (e) => {
             if (!e.candidate) {
-                sdpInput.value = JSON.stringify(peerConnection.localDescription);
-                alert("Teklif kodu oluşturuldu! Şimdi bu kodu kopyalayıp B cihazına yapıştırın.");
-                acceptAnswerBtn.disabled = false;
+                qrcodeDiv.innerHTML = "";
+                const sdp = JSON.stringify(peerConnection.localDescription);
+                new QRCode(qrcodeDiv, { text: sdp, width: 256, height: 256 });
+                status.innerText = "QR Oluşturuldu! B cihazına taratın.";
             }
         };
 
@@ -103,30 +94,46 @@
         await peerConnection.setLocalDescription(offer);
     };
 
-    // B CİHAZI: TEKLİFİ YANITLA
-    answerBtn.onclick = async () => {
-        const offer = JSON.parse(sdpInput.value);
-        createPeer();
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    // B CİHAZI: TARAYICIYI AÇ VE YANITLA
+    document.getElementById('startScanBtn').onclick = () => {
+        readerDiv.style.display = "block";
+        const html5QrCode = new Html5Qrcode("reader");
         
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-
-        peerConnection.onicecandidate = (e) => {
-            if (!e.candidate) {
-                sdpInput.value = JSON.stringify(peerConnection.localDescription);
-                alert("Yanıt kodu oluşturuldu! Şimdi bu kodu kopyalayıp tekrar A cihazına yapıştırın.");
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            { fps: 10, qrbox: 250 },
+            async (decodedText) => {
+                await html5QrCode.stop();
+                readerDiv.style.display = "none";
+                handleScannedData(decodedText);
             }
-        };
+        ).catch(err => status.innerText = "Kamera hatası: " + err);
     };
 
-    // A CİHAZI: SON ADIM (YANITI KABUL ET)
-    acceptAnswerBtn.onclick = async () => {
-        const answer = JSON.parse(sdpInput.value);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        connStatus.innerText = "Bağlanıyor...";
-    };
+    async function handleScannedData(data) {
+        const signal = JSON.parse(data);
 
+        if (signal.type === "offer") {
+            // B Cihazı Teklifi Aldı
+            initPeer();
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+
+            peerConnection.onicecandidate = (e) => {
+                if (!e.candidate) {
+                    qrcodeDiv.innerHTML = "";
+                    const sdp = JSON.stringify(peerConnection.localDescription);
+                    new QRCode(qrcodeDiv, { text: sdp, width: 256, height: 256 });
+                    status.innerText = "Yanıt QR hazır! A cihazına geri taratın.";
+                }
+            };
+        } else if (signal.type === "answer") {
+            // A Cihazı Yanıtı Aldı
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
+            status.innerText = "Eşleşme Tamamlanıyor...";
+        }
+    }
 </script>
 </body>
 </html>
