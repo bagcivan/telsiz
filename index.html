@@ -3,106 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parçalı QR İnterkom</title>
+    <title>Süper-Diyet Parçalı QR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; background: #121212; color: white; text-align: center; padding: 15px; }
-        .card { background: #1e1e1e; padding: 20px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
-        button { width: 100%; padding: 15px; margin: 10px 0; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; }
+        body { font-family: sans-serif; background: #121212; color: white; text-align: center; padding: 10px; }
+        .card { background: #1e1e1e; padding: 15px; border-radius: 15px; max-width: 400px; margin: auto; }
+        button { width: 100%; padding: 15px; margin: 8px 0; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.2s; }
         .btn-blue { background: #007bff; color: white; }
-        .btn-pink { background: #e91e63; color: white; }
+        .btn-red { background: #e91e63; color: white; }
         .btn-green { background: #28a745; color: white; }
-        #status { margin: 15px 0; padding: 10px; border: 1px solid #333; border-radius: 8px; color: #0f0; min-height: 24px; }
-        #qrcode { background: white; padding: 15px; display: inline-block; margin-top: 10px; border-radius: 10px; }
-        #reader { width: 100%; border-radius: 10px; overflow: hidden; margin-top: 10px; }
+        #status { margin: 10px 0; padding: 10px; color: #0f0; background: #000; border-radius: 5px; font-size: 14px; min-height: 20px; }
+        #qr-container { background: white; padding: 15px; border-radius: 10px; margin-top: 10px; color: #000; }
+        #qrcode { display: flex; justify-content: center; }
+        #reader { width: 100%; border-radius: 10px; overflow: hidden; margin-top: 10px; display: none; }
+        .info-text { color: #aaa; font-size: 12px; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>📟 Parçalı QR Telsiz</h2>
-    <div id="status">Mikrofon bekleniyor...</div>
+    <h2>📟 Telsiz (V3)</h2>
+    <div id="status">Mikrofon izni bekleniyor...</div>
     
-    <button id="initBtn" class="btn-blue">1. Mikrofonu Başlat</button>
+    <button id="initBtn" class="btn-blue">1. Mikrofonu Aç</button>
 
-    <div id="controls" style="display:none;">
-        <button id="makeBtn" class="btn-pink">2. Teklif Oluştur (A Cihazı)</button>
+    <div id="ui" style="display:none;">
+        <button id="makeBtn" class="btn-red">2. QR Oluştur (A Cihazı)</button>
         <button id="scanBtn" class="btn-green">3. Tara (B Cihazı)</button>
         
-        <div id="qr-container" style="display:none;">
-            <p id="qr-index">Parça: 1 / 4</p>
-            <div id="qrcode"></div>
-            <button id="nextQR" class="btn-blue">Sonraki Parçaya Geç ➡</button>
+        <div id="qr-box" style="display:none;">
+            <div id="qr-container">
+                <div class="info-text" id="qr-count">Parça 1/1</div>
+                <div id="qrcode"></div>
+            </div>
+            <button id="nextBtn" class="btn-blue">Sonraki Parça ➡</button>
         </div>
 
-        <div id="reader" style="display:none;"></div>
+        <div id="reader"></div>
     </div>
 </div>
 
 <audio id="remoteAudio" autoplay></audio>
 
 <script>
-    let pc, localStream;
-    let chunksToSend = [];
-    let currentChunkIndex = 0;
-    let receivedChunks = {};
-    let totalChunksToReceive = 0;
-
-    const status = document.getElementById('status');
-    const qrcodeDiv = document.getElementById('qrcode');
+    let pc, stream, chunks = [], currentIdx = 0, received = {};
 
     // 1. MİKROFON
     document.getElementById('initBtn').onclick = async () => {
         try {
-            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            status.innerText = "Hazır ✅";
-            document.getElementById('controls').style.display = "block";
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            document.getElementById('status').innerText = "Sistem Hazır ✅";
+            document.getElementById('ui').style.display = "block";
             document.getElementById('initBtn').style.display = "none";
-        } catch (e) { status.innerText = "Hata: Mikrofon izni!"; }
+        } catch (e) { document.getElementById('status').innerText = "Hata: Mikrofon Kapalı!"; }
     };
+
+    // VAHŞİ SDP DİYETİ (Veriyi %80 küçültür)
+    function dietSDP(sdp) {
+        return sdp.split('\n').filter(l => 
+            l.startsWith('v=') || l.startsWith('o=') || l.startsWith('s=') || l.startsWith('t=') || 
+            l.startsWith('c=IN') || l.startsWith('m=audio') || l.startsWith('a=rtpmap:111') || 
+            l.startsWith('a=setup') || l.startsWith('a=mid') || l.startsWith('a=fingerprint')
+        ).join('\n');
+    }
 
     function initPC() {
         pc = new RTCPeerConnection({ iceServers: [] });
-        localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+        stream.getTracks().forEach(t => pc.addTrack(t, stream));
         pc.ontrack = e => {
             document.getElementById('remoteAudio').srcObject = e.streams[0];
-            status.innerText = "BAĞLANDI 🔊";
+            document.getElementById('status').innerText = "BAĞLANDI! 🎙️⚡";
         };
     }
 
-    // VERİYİ PARÇALARA BÖL (Her parça ~200 karakter)
-    function prepareChunks(type, sdp) {
-        const fullData = JSON.stringify({t: type, s: sdp});
-        const size = 200;
-        const numChunks = Math.ceil(fullData.length / size);
-        chunksToSend = [];
-        for (let i = 0; i < numChunks; i++) {
-            // Format: [Sıra/Toplam|Veri]
-            chunksToSend.push(`${i + 1}/${numChunks}|${fullData.substr(i * size, size)}`);
-        }
-        currentChunkIndex = 0;
-        showNextChunk();
-    }
-
-    function showNextChunk() {
-        if (currentChunkIndex < chunksToSend.length) {
-            document.getElementById('qr-container').style.display = "block";
-            document.getElementById('qr-index').innerText = `Parça: ${currentChunkIndex + 1} / ${chunksToSend.length}`;
-            qrcodeDiv.innerHTML = "";
-            new QRCode(qrcodeDiv, { text: chunksToSend[currentChunkIndex], width: 250, height: 250 });
-            
-            if (currentChunkIndex === chunksToSend.length - 1) {
-                document.getElementById('nextQR').innerText = "Tüm Parçalar Gösterildi";
-            } else {
-                document.getElementById('nextQR').innerText = "Sonraki Parçaya Geç ➡";
-            }
+    // QR GÖSTERİMİ
+    function generateQR() {
+        if (currentIdx < chunks.length) {
+            document.getElementById('qr-box').style.display = "block";
+            document.getElementById('qr-count').innerText = `Parça: ${currentIdx + 1} / ${chunks.length}`;
+            document.getElementById('qrcode').innerHTML = "";
+            new QRCode(document.getElementById('qrcode'), {
+                text: chunks[currentIdx],
+                width: 250,
+                height: 250,
+                correctLevel: QRCode.CorrectLevel.L
+            });
+            document.getElementById('nextBtn').innerText = (currentIdx === chunks.length - 1) ? "Bitti" : "Sonraki Parça ➡";
         }
     }
 
-    document.getElementById('nextQR').onclick = () => {
-        currentChunkIndex++;
-        if (currentChunkIndex < chunksToSend.length) showNextChunk();
+    document.getElementById('nextBtn').onclick = () => {
+        if (currentIdx < chunks.length - 1) {
+            currentIdx++;
+            generateQR();
+        } else {
+            document.getElementById('qr-box').style.display = "none";
+        }
     };
 
     // A CİHAZI: TEKLİF
@@ -110,57 +107,62 @@
         initPC();
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        status.innerText = "Teklif parçalanıyor...";
-        setTimeout(() => prepareChunks("offer", pc.localDescription.sdp), 1000);
+        
+        setTimeout(() => {
+            const smallSDP = dietSDP(pc.localDescription.sdp);
+            const data = JSON.stringify({t: pc.localDescription.type, s: smallSDP});
+            // Parçalara böl (350 karakterlik parçalar QR için idealdir)
+            const size = 350;
+            chunks = [];
+            for (let i = 0; i < Math.ceil(data.length / size); i++) {
+                chunks.push(`${i+1}/${Math.ceil(data.length / size)}|${data.substr(i*size, size)}`);
+            }
+            currentIdx = 0;
+            generateQR();
+            document.getElementById('status').innerText = "QR Oluşturuldu 👇";
+        }, 800);
     };
 
-    // B CİHAZI: TARAMA
+    // B CİHAZI: TARA
     document.getElementById('scanBtn').onclick = () => {
-        const readerEl = document.getElementById('reader');
-        readerEl.style.display = "block";
-        receivedChunks = {};
+        const reader = document.getElementById('reader');
+        reader.style.display = "block";
+        received = {};
         const scanner = new Html5Qrcode("reader");
-        
-        scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, async (text) => {
-            const parts = text.split('|');
-            const info = parts[0].split('/');
-            const index = info[0];
-            const total = info[1];
-            const data = parts[1];
-
-            if (!receivedChunks[index]) {
-                receivedChunks[index] = data;
-                status.innerText = `Alınıyor: ${Object.keys(receivedChunks).length} / ${total}`;
-                
-                if (Object.keys(receivedChunks).length == total) {
+        scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, async (txt) => {
+            const [meta, body] = txt.split('|');
+            const [idx, total] = meta.split('/');
+            if (!received[idx]) {
+                received[idx] = body;
+                document.getElementById('status').innerText = `Alınıyor: ${Object.keys(received).length}/${total}`;
+                if (Object.keys(received).length == total) {
                     await scanner.stop();
-                    readerEl.style.display = "none";
-                    status.innerText = "Veri birleştiriliyor...";
-                    assembleAndProcess();
+                    reader.style.display = "none";
+                    let full = "";
+                    for(let i=1; i<=total; i++) full += received[i];
+                    const sig = JSON.parse(full);
+                    if(!pc) initPC();
+                    await pc.setRemoteDescription(new RTCSessionDescription({type: sig.t, sdp: sig.s}));
+                    if(sig.t === "offer") {
+                        const ans = await pc.createAnswer();
+                        await pc.setLocalDescription(ans);
+                        setTimeout(() => {
+                            const ansSDP = dietSDP(pc.localDescription.sdp);
+                            const ansData = JSON.stringify({t: "answer", s: ansSDP});
+                            const size = 350;
+                            chunks = [];
+                            for (let i = 0; i < Math.ceil(ansData.length / size); i++) {
+                                chunks.push(`${i+1}/${Math.ceil(ansData.length / size)}|${ansData.substr(i*size, size)}`);
+                            }
+                            currentIdx = 0;
+                            generateQR();
+                            document.getElementById('status').innerText = "Yanıt QR hazır!";
+                        }, 800);
+                    }
                 }
             }
         });
     };
-
-    async function assembleAndProcess() {
-        let fullStr = "";
-        const total = Object.keys(receivedChunks).length;
-        for (let i = 1; i <= total; i++) fullStr += receivedChunks[i];
-        
-        const signal = JSON.parse(fullStr);
-        if (!pc) initPC();
-
-        await pc.setRemoteDescription(new RTCSessionDescription({type: signal.t, sdp: signal.s}));
-
-        if (signal.t === "offer") {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            prepareChunks("answer", pc.localDescription.sdp);
-            status.innerText = "Yanıt oluşturuldu, parçaları A'ya taratın.";
-        } else {
-            status.innerText = "Bağlantı tamamlandı!";
-        }
-    }
 </script>
 </body>
 </html>
