@@ -2,184 +2,107 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ultra-Odak Telsiz</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garantili Manuel Telsiz</title>
     <style>
-        body { font-family: sans-serif; background: #000; color: #fff; text-align: center; margin: 0; padding: 10px; }
-        .card { background: #1a1a1a; padding: 20px; border-radius: 20px; max-width: 450px; margin: auto; }
-        button { width: 100%; padding: 16px; margin: 10px 0; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 16px; }
-        .btn-blue { background: #2979ff; color: white; }
-        .btn-red { background: #ff1744; color: white; }
-        .btn-green { background: #00e676; color: white; }
-        #status { margin: 10px 0; padding: 12px; color: #00e676; background: #222; border-radius: 10px; font-size: 14px; border: 1px solid #333; }
-        
-        /* QR Alanı - Odaklama için çok önemli */
-        #qr-display-area { background: white; padding: 25px; border-radius: 15px; margin: 15px 0; display: none; }
-        #qrcode img { margin: auto; border: 4px solid white; }
-        
-        #reader { width: 100%; border-radius: 15px; overflow: hidden; margin-top: 10px; display: none; background: #222; }
-        .zoom-controls { display: flex; gap: 10px; margin-bottom: 10px; }
-        .zoom-controls button { padding: 10px; flex: 1; background: #444; }
+        body { font-family: sans-serif; background: #121212; color: white; text-align: center; padding: 15px; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 15px; max-width: 500px; margin: auto; }
+        textarea { width: 100%; height: 100px; background: #000; color: #0f0; border: 1px solid #333; font-size: 10px; margin: 10px 0; border-radius: 5px; }
+        button { width: 100%; padding: 15px; margin: 5px 0; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-blue { background: #007bff; color: white; }
+        .btn-green { background: #28a745; color: white; }
+        .status { color: #ffc107; font-size: 14px; margin: 10px 0; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2 style="color: #2979ff;">📟 Ultra-Odak Telsiz</h2>
-    <div id="status">Mikrofonu Başlatın</div>
-    
-    <button id="initBtn" class="btn-blue">1. Mikrofonu Aç</button>
+    <h2>📟 Manuel Telsiz</h2>
+    <div id="status" class="status">Mikrofon bekleniyor...</div>
+    <button onclick="startMic()" id="micBtn" class="btn-blue">1. Mikrofonu Aç</button>
 
-    <div id="ui" style="display:none;">
-        <button id="makeBtn" class="btn-red">2. QR Oluştur (A Cihazı)</button>
-        <button id="scanBtn" class="btn-green">3. Tara (B Cihazı)</button>
+    <div id="main" style="display:none;">
+        <hr>
+        <h3>A Cihazı (Başlatan)</h3>
+        <button onclick="createOffer()" class="btn-blue">2. Teklif Kodu Oluştur</button>
         
-        <div id="qr-display-area">
-            <div id="qr-meta" style="color:#000; font-size:12px; margin-bottom:10px; font-weight:bold;"></div>
-            <div id="qrcode"></div>
-            <div class="zoom-controls">
-                <button onclick="changeQRSize(-20)">➖ Küçült</button>
-                <button onclick="changeQRSize(20)">➕ Büyüt</button>
-            </div>
-            <button id="nextBtn" class="btn-blue">Sonraki Parça ➡</button>
-        </div>
-
-        <div id="reader"></div>
-        <button id="torchBtn" class="btn-blue" style="display:none; background:#ff9100;">🔦 Feneri Aç/Kapat</button>
+        <h3>B Cihazı (Yanıtlayan)</h3>
+        <p style="font-size:12px">Karşıdan gelen kodu buraya yapıştır:</p>
+        <textarea id="incomingCode" placeholder="Kodu buraya yapıştırın..."></textarea>
+        <button onclick="processIncoming()" class="btn-green">3. Kodu İşle / Yanıtla</button>
+        
+        <hr>
+        <p style="font-size:12px">Senin Kodun (Bunu karşıya gönder):</p>
+        <textarea id="outgoingCode" readonly onclick="this.select()"></textarea>
+        <button onclick="copyCode()" style="background:#444; color:white;">Kodu Kopyala</button>
     </div>
 </div>
 
 <audio id="remoteAudio" autoplay></audio>
 
 <script>
-    let pc, stream, chunks = [], currentIdx = 0, received = {}, qrSize = 240;
-    let html5QrCode;
+    let pc, stream;
+    const status = document.getElementById('status');
+    const incoming = document.getElementById('incomingCode');
+    const outgoing = document.getElementById('outgoingCode');
 
-    // 1. MİKROFON
-    document.getElementById('initBtn').onclick = async () => {
+    async function startMic() {
         try {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            document.getElementById('status').innerText = "Sistem Hazır! ✅";
-            document.getElementById('ui').style.display = "block";
-            document.getElementById('initBtn').style.display = "none";
-        } catch (e) { document.getElementById('status').innerText = "Hata: Mikrofon İzni!"; }
-    };
-
-    function changeQRSize(amt) {
-        qrSize += amt;
-        generateQR();
-    }
-
-    // SDP DİYETİ (Minimum Veri)
-    function dietSDP(sdp) {
-        return sdp.split('\n').filter(l => 
-            l.startsWith('v=') || l.startsWith('o=') || l.startsWith('c=IN') || 
-            l.startsWith('m=audio') || l.startsWith('a=rtpmap:111') || 
-            l.startsWith('a=setup') || l.startsWith('a=fingerprint')
-        ).join('\n');
+            status.innerText = "Sistem Hazır! ✅";
+            document.getElementById('main').style.display = "block";
+            document.getElementById('micBtn').style.display = "none";
+        } catch (e) { status.innerText = "Mikrofon hatası!"; }
     }
 
     function initPC() {
+        if (pc) return;
         pc = new RTCPeerConnection({ iceServers: [] });
         stream.getTracks().forEach(t => pc.addTrack(t, stream));
         pc.ontrack = e => {
             document.getElementById('remoteAudio').srcObject = e.streams[0];
-            document.getElementById('status').innerText = "BAĞLANDI! 🎙️⚡";
+            status.innerText = "BAĞLANDI! 🎙️⚡";
         };
     }
 
-    function generateQR() {
-        if (currentIdx < chunks.length) {
-            document.getElementById('qr-display-area').style.display = "block";
-            document.getElementById('qr-meta').innerText = `PARÇA: ${currentIdx + 1} / ${chunks.length}`;
-            document.getElementById('qrcode').innerHTML = "";
-            new QRCode(document.getElementById('qrcode'), {
-                text: chunks[currentIdx],
-                width: qrSize,
-                height: qrSize,
-                correctLevel: QRCode.CorrectLevel.L
-            });
-            document.getElementById('nextBtn').innerText = (currentIdx === chunks.length - 1) ? "TAMAMLANDI" : "SONRAKİ PARÇA ➡";
-        }
-    }
-
-    document.getElementById('nextBtn').onclick = () => {
-        if (currentIdx < chunks.length - 1) {
-            currentIdx++;
-            generateQR();
-        } else {
-            document.getElementById('qr-display-area').style.display = "none";
-        }
-    };
-
-    document.getElementById('makeBtn').onclick = async () => {
+    async function createOffer() {
         initPC();
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
+        // ICE adaylarını beklemeden direkt metni veriyoruz (Local ağda %90 çalışır)
         setTimeout(() => {
-            const data = JSON.stringify({t: "offer", s: dietSDP(pc.localDescription.sdp)});
-            const size = 250; // Küçük tutarak QR'ı basitleştiriyoruz
-            chunks = [];
-            for (let i = 0; i < Math.ceil(data.length / size); i++) {
-                chunks.push(`${i+1}/${Math.ceil(data.length / size)}|${data.substr(i*size, size)}`);
-            }
-            currentIdx = 0;
-            generateQR();
-            document.getElementById('status').innerText = "QR Hazır! Diğer cihazla tarayın.";
+            outgoing.value = btoa(pc.localDescription.sdp); // Base64 ile kısaltıyoruz
+            status.innerText = "Teklif Hazır! Kopyalayıp B'ye gönder.";
         }, 1000);
-    };
+    }
 
-    document.getElementById('scanBtn').onclick = () => {
-        const readerEl = document.getElementById('reader');
-        readerEl.style.display = "block";
-        received = {};
-        html5QrCode = new Html5Qrcode("reader");
-        
-        html5QrCode.start({ facingMode: "environment" }, { fps: 20, qrbox: 280 }, 
-        async (txt) => {
-            const [meta, body] = txt.split('|');
-            const [idx, total] = meta.split('/');
-            if (!received[idx]) {
-                received[idx] = body;
-                document.getElementById('status').innerText = `Alınan: ${Object.keys(received).length} / ${total}`;
-                if (Object.keys(received).length == total) {
-                    await html5QrCode.stop();
-                    readerEl.style.display = "none";
-                    document.getElementById('torchBtn').style.display = "none";
-                    let full = "";
-                    for(let i=1; i<=total; i++) full += received[i];
-                    const sig = JSON.parse(full);
-                    if(!pc) initPC();
-                    await pc.setRemoteDescription(new RTCSessionDescription({type: sig.t, sdp: sig.s}));
-                    if(sig.t === "offer") {
-                        const ans = await pc.createAnswer();
-                        await pc.setLocalDescription(ans);
-                        setTimeout(() => {
-                            const ansData = JSON.stringify({t: "answer", s: dietSDP(pc.localDescription.sdp)});
-                            chunks = [];
-                            for (let i = 0; i < Math.ceil(ansData.length / 250); i++) {
-                                chunks.push(`${i+1}/${Math.ceil(ansData.length / 250)}|${ansData.substr(i*250, 250)}`);
-                            }
-                            currentIdx = 0;
-                            generateQR();
-                            document.getElementById('status').innerText = "Yanıt QR hazır! A'ya taratın.";
-                        }, 1000);
-                    }
-                }
-            }
-        }).then(() => {
-            if (html5QrCode.getCapabilities().torch) {
-                document.getElementById('torchBtn').style.display = "block";
-            }
-        });
-    };
+    async function processIncoming() {
+        const raw = incoming.value.trim();
+        if(!raw) return;
+        const decodedSDP = atob(raw);
+        initPC();
 
-    document.getElementById('torchBtn').onclick = () => {
-        const state = html5QrCode.getCapabilities().torch;
-        html5QrCode.applyVideoConstraints({ focusMode: "continuous", advanced: [{ torch: !state }] });
-    };
+        if (pc.signalingState === "stable") {
+            // Bu bir TEKLİF (A'dan B'ye)
+            await pc.setRemoteDescription(new RTCSessionDescription({type: "offer", sdp: decodedSDP}));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            setTimeout(() => {
+                outgoing.value = btoa(pc.localDescription.sdp);
+                status.innerText = "Yanıt oluşturuldu! Kopyalayıp A'ya geri gönder.";
+            }, 1000);
+        } else {
+            // Bu bir YANIT (B'den A'ya geri dönüş)
+            await pc.setRemoteDescription(new RTCSessionDescription({type: "answer", sdp: decodedSDP}));
+            status.innerText = "Eşleşme tamamlandı!";
+        }
+    }
+
+    function copyCode() {
+        outgoing.select();
+        document.execCommand("copy");
+        alert("Kod kopyalandı!");
+    }
 </script>
 </body>
 </html>
