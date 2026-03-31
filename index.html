@@ -2,62 +2,86 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Garantili Telsiz - Dosya Transferi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Profesyonel Bas-Konuş Telsiz</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; text-align: center; padding: 20px; }
-        .card { background: #1e1e1e; padding: 25px; border-radius: 15px; max-width: 500px; margin: auto; border: 1px solid #333; }
-        .status { padding: 15px; margin: 15px 0; border-radius: 8px; background: #252525; color: #4caf50; font-weight: bold; border-left: 5px solid #4caf50; }
-        button { width: 100%; padding: 15px; margin: 8px 0; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.3s; }
-        .btn-blue { background: #1a73e8; color: white; }
-        .btn-green { background: #34a853; color: white; }
-        .btn-file { background: #5f6368; color: white; }
+        body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; text-align: center; margin: 0; padding: 15px; }
+        .container { max-width: 500px; margin: auto; }
+        .card { background: #1a1a1a; padding: 20px; border-radius: 20px; border: 2px solid #333; margin-top: 10px; }
+        
+        /* Durum Göstergesi */
+        .status-light { width: 15px; height: 15px; border-radius: 50%; display: inline-block; margin-right: 8px; background: #555; }
+        .online { background: #00e676; box-shadow: 0 0 10px #00e676; }
+        .transmitting { background: #ff1744; box-shadow: 0 0 10px #ff1744; }
+
+        /* Butonlar */
+        button { width: 100%; padding: 15px; margin: 10px 0; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 15px; }
+        .btn-setup { background: #2979ff; color: white; }
+        .btn-file { background: #fbbc05; color: #000; }
+        
+        /* Bas-Konuş Butonu */
+        #ptt-button { 
+            height: 200px; width: 200px; border-radius: 50%; margin: 30px auto; 
+            background: #333; border: 8px solid #444; color: #777; 
+            font-size: 20px; display: none; user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #ptt-button.active { 
+            background: #ff1744; border-color: #b71c1c; color: white; transform: scale(0.95);
+        }
+
+        #setup-ui, #telsiz-ui { display: none; }
         input[type="file"] { display: none; }
-        label { display: block; background: #fbbc05; color: black; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-        hr { border: 0; border-top: 1px solid #333; margin: 20px 0; }
+        label { display: block; background: #444; padding: 15px; border-radius: 12px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>📡 Dosya Tabanlı Telsiz</h2>
-    <div id="status" class="status">Mikrofon izni bekleniyor...</div>
-    <button id="startBtn" class="btn-blue">1. Sistemi Başlat (Mikrofonu Aç)</button>
+<div class="container">
+    <div class="card">
+        <h2>📡 Telsiz Sistemi</h2>
+        <div id="status-text"><span class="status-light" id="light"></span> <span id="info">Sistemi Başlatın</span></div>
+    </div>
 
-    <div id="mainUI" style="display:none;">
-        <hr>
-        <h3>Cihaz A (Başlatıcı)</h3>
-        <button id="createOfferBtn" class="btn-blue">2. Teklif Dosyası Oluştur (EXPORT)</button>
-        
-        <hr>
-        <h3>Cihaz B (Yanıtlayıcı)</h3>
-        <p style="font-size: 12px; color: #aaa;">Cihaz A'dan gelen dosyayı seç:</p>
-        <label for="importFile">📁 DOSYA İÇE AKTAR (IMPORT)</label>
+    <button id="startBtn" class="btn-setup">1. Mikrofonu ve Sistemi Başlat</button>
+
+    <div id="setup-ui" class="card">
+        <h3>1. Aşama: El Sıkışma</h3>
+        <button id="createOfferBtn" class="btn-setup">Teklif Dosyası Oluştur (Cihaz A)</button>
+        <hr style="border-color:#333">
+        <label for="importFile">📁 Dosya İçe Aktar (A veya B)</label>
         <input type="file" id="importFile" accept=".txt">
         
         <div id="answerArea" style="display:none;">
-            <p style="color: #fbbc05; font-size: 12px;">Şimdi kendi yanıt dosyanı oluşturup A'ya gönder:</p>
-            <button id="createAnswerBtn" class="btn-green">3. Yanıt Dosyası Oluştur (EXPORT)</button>
+            <button id="createAnswerBtn" class="btn-file">Yanıt Dosyası Oluştur (Cihaz B)</button>
         </div>
+    </div>
+
+    <div id="telsiz-ui">
+        <button id="ptt-button">BAS KONUŞ</button>
+        <p style="color: #888;">Dokun ve Basılı Tut</p>
     </div>
 </div>
 
 <audio id="remoteAudio" autoplay></audio>
 
 <script>
-    let pc, stream;
-    const status = document.getElementById('status');
-    const mainUI = document.getElementById('mainUI');
-    const importFile = document.getElementById('importFile');
+    let pc, stream, localTrack;
+    const statusInfo = document.getElementById('info');
+    const statusLight = document.getElementById('light');
+    const pttButton = document.getElementById('ptt-button');
 
-    // 1. MİKROFONU AÇ
+    // 1. ADIM: MİKROFONU AÇ
     document.getElementById('startBtn').onclick = async () => {
         try {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            status.innerText = "Sistem Hazır! ✅";
-            mainUI.style.display = "block";
+            localTrack = stream.getAudioTracks()[0];
+            localTrack.enabled = false; // Başlangıçta ses kapalı (Telsiz modu)
+            
+            document.getElementById('setup-ui').style.display = "block";
             document.getElementById('startBtn').style.display = "none";
-        } catch (e) { status.innerText = "Hata: Mikrofon Kapalı!"; }
+            statusInfo.innerText = "Kurulum Bekleniyor";
+        } catch (e) { alert("Mikrofon izni şart!"); }
     };
 
     function initPC() {
@@ -67,71 +91,87 @@
         
         pc.ontrack = e => {
             document.getElementById('remoteAudio').srcObject = e.streams[0];
-            status.innerText = "BAĞLANTI KURULDU! 🎙️🔊";
-            status.style.borderColor = "#4caf50";
+            switchToTelsizMode();
         };
     }
 
-    // DOSYA OLUŞTURMA (EXPORT)
-    function exportToFile(filename, content) {
-        const blob = new Blob([content], { type: 'text/plain' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = filename;
-        link.click();
+    function switchToTelsizMode() {
+        document.getElementById('setup-ui').style.display = "none";
+        document.getElementById('telsiz-ui').style.display = "block";
+        pttButton.style.display = "block";
+        statusInfo.innerText = "BAĞLI - DİNLEMEDE";
+        statusLight.className = "status-light online";
     }
 
-    // 2. TEKLİF OLUŞTUR (A Cihazı)
+    // DOSYA OLUŞTURMA
+    function downloadFile(name, sdp) {
+        const blob = new Blob([JSON.stringify({t: pc.localDescription.type, s: btoa(sdp)})], {type: 'text/plain'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.click();
+    }
+
+    // A CİHAZI TEKLİF
     document.getElementById('createOfferBtn').onclick = async () => {
         initPC();
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-
-        status.innerText = "Ağ adresleri toplanıyor (5sn)...";
-        // ICE adaylarının toplanması için biraz beklemeliyiz (Yerel ağda çok önemlidir)
-        setTimeout(() => {
-            const sdp = btoa(pc.localDescription.sdp); // Güvenli transfer için Base64
-            exportToFile("teklif_A.txt", JSON.stringify({t: "offer", s: sdp}));
-            status.innerText = "teklif_A.txt indirildi. Bunu B'ye gönder.";
-        }, 5000);
+        statusInfo.innerText = "Hazırlanıyor (5sn)...";
+        setTimeout(() => downloadFile("telsiz_teklif.txt", pc.localDescription.sdp), 5000);
     };
 
-    // 3. DOSYA İÇE AKTAR (IMPORT - B veya A Cihazı)
-    importFile.onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+    // DOSYA İÇE AKTAR
+    document.getElementById('importFile').onchange = (e) => {
         const reader = new FileReader();
-        reader.onload = async (event) => {
-            const data = JSON.parse(event.target.result);
-            const decodedSDP = atob(data.s);
+        reader.onload = async (ev) => {
+            const data = JSON.parse(ev.target.result);
+            const sdp = atob(data.s);
             initPC();
-
             if (data.t === "offer") {
-                // B Cihazı Teklifi Aldı
-                await pc.setRemoteDescription(new RTCSessionDescription({type: "offer", sdp: decodedSDP}));
+                await pc.setRemoteDescription(new RTCSessionDescription({type:"offer", sdp}));
                 document.getElementById('answerArea').style.display = "block";
-                status.innerText = "Teklif dosyası yüklendi. Yanıt oluşturun.";
+                statusInfo.innerText = "Teklif alındı, yanıtlayın.";
             } else {
-                // A Cihazı Yanıtı Aldı
-                await pc.setRemoteDescription(new RTCSessionDescription({type: "answer", sdp: decodedSDP}));
-                status.innerText = "Yanıt yüklendi. Bağlanıyor...";
+                await pc.setRemoteDescription(new RTCSessionDescription({type:"answer", sdp}));
             }
         };
-        reader.readAsText(file);
+        reader.readAsText(e.target.files[0]);
     };
 
-    // 4. YANIT OLUŞTUR (B Cihazı)
+    // B CİHAZI YANIT
     document.getElementById('createAnswerBtn').onclick = async () => {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        
-        status.innerText = "Yanıt hazırlanıyor (5sn)...";
-        setTimeout(() => {
-            const sdp = btoa(pc.localDescription.sdp);
-            exportToFile("yanit_B.txt", JSON.stringify({t: "answer", s: sdp}));
-            status.innerText = "yanit_B.txt indirildi. Bunu A'ya geri gönder.";
-        }, 5000);
+        statusInfo.innerText = "Hazırlanıyor (5sn)...";
+        setTimeout(() => downloadFile("telsiz_yanit.txt", pc.localDescription.sdp), 5000);
     };
+
+    // --- 2. AŞAMA: BAS KONUŞ MANTIĞI ---
+    function startTransmission() {
+        if (!localTrack) return;
+        localTrack.enabled = true; // Sesi aç
+        pttButton.classList.add('active');
+        pttButton.innerText = "KONUŞUYOR...";
+        statusLight.className = "status-light transmitting";
+        statusInfo.innerText = "YAYINDA (TX)";
+    }
+
+    function stopTransmission() {
+        if (!localTrack) return;
+        localTrack.enabled = false; // Sesi kapat
+        pttButton.classList.remove('active');
+        pttButton.innerText = "BAS KONUŞ";
+        statusLight.className = "status-light online";
+        statusInfo.innerText = "DİNLEMEDE (RX)";
+    }
+
+    // Mobil ve Masaüstü için olay dinleyiciler
+    pttButton.addEventListener('mousedown', startTransmission);
+    pttButton.addEventListener('mouseup', stopTransmission);
+    pttButton.addEventListener('touchstart', (e) => { e.preventDefault(); startTransmission(); });
+    pttButton.addEventListener('touchend', (e) => { e.preventDefault(); stopTransmission(); });
+
 </script>
 </body>
 </html>
