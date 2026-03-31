@@ -3,63 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Profesyonel Bas-Konuş Telsiz</title>
+    <title>Garantili Bas-Konuş Telsiz</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; text-align: center; margin: 0; padding: 15px; }
-        .container { max-width: 500px; margin: auto; }
-        .card { background: #1a1a1a; padding: 20px; border-radius: 20px; border: 2px solid #333; margin-top: 10px; }
-        
-        /* Durum Göstergesi */
-        .status-light { width: 15px; height: 15px; border-radius: 50%; display: inline-block; margin-right: 8px; background: #555; }
-        .online { background: #00e676; box-shadow: 0 0 10px #00e676; }
-        .transmitting { background: #ff1744; box-shadow: 0 0 10px #ff1744; }
+        .card { background: #1a1a1a; padding: 20px; border-radius: 20px; border: 1px solid #333; margin-top: 10px; max-width: 500px; margin-left: auto; margin-right: auto; }
+        .status-box { padding: 10px; margin-bottom: 10px; border-radius: 10px; background: #222; font-size: 14px; border-left: 5px solid #555; }
+        .status-online { border-left-color: #00e676; color: #00e676; }
+        .status-tx { border-left-color: #ff1744; color: #ff1744; }
 
-        /* Butonlar */
-        button { width: 100%; padding: 15px; margin: 10px 0; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 15px; }
-        .btn-setup { background: #2979ff; color: white; }
-        .btn-file { background: #fbbc05; color: #000; }
+        button { width: 100%; padding: 15px; margin: 8px 0; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 15px; }
+        .btn-setup { background: #1a73e8; color: white; }
+        .btn-answer { background: #fbbc05; color: black; }
         
-        /* Bas-Konuş Butonu */
+        /* PTT Butonu */
         #ptt-button { 
-            height: 200px; width: 200px; border-radius: 50%; margin: 30px auto; 
-            background: #333; border: 8px solid #444; color: #777; 
-            font-size: 20px; display: none; user-select: none;
+            height: 220px; width: 220px; border-radius: 50%; margin: 30px auto; 
+            background: #222; border: 10px solid #333; color: #555; 
+            font-size: 22px; display: none; user-select: none;
             -webkit-tap-highlight-color: transparent;
+            transition: 0.2s;
         }
         #ptt-button.active { 
-            background: #ff1744; border-color: #b71c1c; color: white; transform: scale(0.95);
+            background: #ff1744; border-color: #b71c1c; color: white; box-shadow: 0 0 30px rgba(255,23,68,0.5);
         }
 
-        #setup-ui, #telsiz-ui { display: none; }
+        #setup-area, #telsiz-area { display: none; }
+        label { display: block; background: #444; padding: 15px; border-radius: 12px; cursor: pointer; margin-top: 10px; font-weight: bold; }
         input[type="file"] { display: none; }
-        label { display: block; background: #444; padding: 15px; border-radius: 12px; cursor: pointer; }
+        hr { border: 0; border-top: 1px solid #333; margin: 20px 0; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="card">
-        <h2>📡 Telsiz Sistemi</h2>
-        <div id="status-text"><span class="status-light" id="light"></span> <span id="info">Sistemi Başlatın</span></div>
-    </div>
+<div class="card">
+    <h2>📡 Telsiz Sistemi</h2>
+    <div id="status-display" class="status-box">Sistemi Başlatın</div>
 
     <button id="startBtn" class="btn-setup">1. Mikrofonu ve Sistemi Başlat</button>
 
-    <div id="setup-ui" class="card">
-        <h3>1. Aşama: El Sıkışma</h3>
-        <button id="createOfferBtn" class="btn-setup">Teklif Dosyası Oluştur (Cihaz A)</button>
-        <hr style="border-color:#333">
-        <label for="importFile">📁 Dosya İçe Aktar (A veya B)</label>
+    <div id="setup-area">
+        <hr>
+        <p style="font-size:12px; color:#aaa;">Adım A: Başlatıcı iseniz tıklayın</p>
+        <button id="offerBtn" class="btn-setup">TEKLİF DOSYASI OLUŞTUR (EXPORT)</button>
+        
+        <hr>
+        <p style="font-size:12px; color:#aaa;">Adım B: Diğer cihazdan gelen dosyayı seçin</p>
+        <label for="importFile">📁 DOSYA İÇE AKTAR (IMPORT)</label>
         <input type="file" id="importFile" accept=".txt">
         
-        <div id="answerArea" style="display:none;">
-            <button id="createAnswerBtn" class="btn-file">Yanıt Dosyası Oluştur (Cihaz B)</button>
+        <div id="answerBtnArea" style="display:none;">
+            <p style="font-size:12px; color:#fbbc05;">Teklif yüklendi! Yanıt oluşturun:</p>
+            <button id="createAnswerBtn" class="btn-answer">YANIT DOSYASI OLUŞTUR (EXPORT)</button>
         </div>
     </div>
 
-    <div id="telsiz-ui">
+    <div id="telsiz-area">
         <button id="ptt-button">BAS KONUŞ</button>
-        <p style="color: #888;">Dokun ve Basılı Tut</p>
+        <p style="color: #666;">Dinlemedesiniz. Konuşmak için basılı tutun.</p>
     </div>
 </div>
 
@@ -67,21 +67,20 @@
 
 <script>
     let pc, stream, localTrack;
-    const statusInfo = document.getElementById('info');
-    const statusLight = document.getElementById('light');
+    const statusDisplay = document.getElementById('status-display');
     const pttButton = document.getElementById('ptt-button');
 
-    // 1. ADIM: MİKROFONU AÇ
+    // 1. MİKROFONU HAZIRLA
     document.getElementById('startBtn').onclick = async () => {
         try {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             localTrack = stream.getAudioTracks()[0];
-            localTrack.enabled = false; // Başlangıçta ses kapalı (Telsiz modu)
+            localTrack.enabled = false; // Başlangıçta ses kapalı
             
-            document.getElementById('setup-ui').style.display = "block";
+            document.getElementById('setup-area').style.display = "block";
             document.getElementById('startBtn').style.display = "none";
-            statusInfo.innerText = "Kurulum Bekleniyor";
-        } catch (e) { alert("Mikrofon izni şart!"); }
+            statusDisplay.innerText = "Bağlantı Kurulumu Bekleniyor...";
+        } catch (e) { alert("Mikrofon izni verilmedi!"); }
     };
 
     function initPC() {
@@ -91,86 +90,95 @@
         
         pc.ontrack = e => {
             document.getElementById('remoteAudio').srcObject = e.streams[0];
-            switchToTelsizMode();
+            statusDisplay.innerText = "Ses Kanalı Açıldı ✅";
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+                switchToTelsiz();
+            }
         };
     }
 
-    function switchToTelsizMode() {
-        document.getElementById('setup-ui').style.display = "none";
-        document.getElementById('telsiz-ui').style.display = "block";
+    function switchToTelsiz() {
+        document.getElementById('setup-area').style.display = "none";
+        document.getElementById('telsiz-area').style.display = "block";
         pttButton.style.display = "block";
-        statusInfo.innerText = "BAĞLI - DİNLEMEDE";
-        statusLight.className = "status-light online";
+        statusDisplay.innerText = "BAĞLI - DİNLEMEDE";
+        statusDisplay.className = "status-box status-online";
     }
 
-    // DOSYA OLUŞTURMA
-    function downloadFile(name, sdp) {
-        const blob = new Blob([JSON.stringify({t: pc.localDescription.type, s: btoa(sdp)})], {type: 'text/plain'});
+    function download(filename, sdp) {
+        const data = JSON.stringify({t: pc.localDescription.type, s: btoa(sdp)});
+        const blob = new Blob([data], {type: 'text/plain'});
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = name;
+        a.download = filename;
         a.click();
     }
 
-    // A CİHAZI TEKLİF
-    document.getElementById('createOfferBtn').onclick = async () => {
+    // A CİHAZI: TEKLİF
+    document.getElementById('offerBtn').onclick = async () => {
         initPC();
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        statusInfo.innerText = "Hazırlanıyor (5sn)...";
-        setTimeout(() => downloadFile("telsiz_teklif.txt", pc.localDescription.sdp), 5000);
+        statusDisplay.innerText = "Adresler toplanıyor (5sn)...";
+        setTimeout(() => download("teklif.txt", pc.localDescription.sdp), 5000);
     };
 
-    // DOSYA İÇE AKTAR
+    // DOSYA İÇE AKTAR (A veya B)
     document.getElementById('importFile').onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
         const reader = new FileReader();
         reader.onload = async (ev) => {
             const data = JSON.parse(ev.target.result);
             const sdp = atob(data.s);
             initPC();
+            
             if (data.t === "offer") {
-                await pc.setRemoteDescription(new RTCSessionDescription({type:"offer", sdp}));
-                document.getElementById('answerArea').style.display = "block";
-                statusInfo.innerText = "Teklif alındı, yanıtlayın.";
+                // B Cihazı Teklif Aldı
+                await pc.setRemoteDescription(new RTCSessionDescription({type: "offer", sdp}));
+                document.getElementById('answerBtnArea').style.display = "block";
+                statusDisplay.innerText = "Teklif dosyası yüklendi.";
             } else {
-                await pc.setRemoteDescription(new RTCSessionDescription({type:"answer", sdp}));
+                // A Cihazı Yanıt Aldı
+                await pc.setRemoteDescription(new RTCSessionDescription({type: "answer", sdp}));
+                statusDisplay.innerText = "Yanıt dosyası yüklendi. Bağlanıyor...";
             }
         };
-        reader.readAsText(e.target.files[0]);
+        reader.readAsText(file);
     };
 
-    // B CİHAZI YANIT
+    // B CİHAZI: YANIT
     document.getElementById('createAnswerBtn').onclick = async () => {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        statusInfo.innerText = "Hazırlanıyor (5sn)...";
-        setTimeout(() => downloadFile("telsiz_yanit.txt", pc.localDescription.sdp), 5000);
+        statusDisplay.innerText = "Yanıt hazırlanıyor (5sn)...";
+        setTimeout(() => download("yanit.txt", pc.localDescription.sdp), 5000);
     };
 
-    // --- 2. AŞAMA: BAS KONUŞ MANTIĞI ---
-    function startTransmission() {
+    // BAS KONUŞ MANTIĞI
+    function setMic(active) {
         if (!localTrack) return;
-        localTrack.enabled = true; // Sesi aç
-        pttButton.classList.add('active');
-        pttButton.innerText = "KONUŞUYOR...";
-        statusLight.className = "status-light transmitting";
-        statusInfo.innerText = "YAYINDA (TX)";
+        localTrack.enabled = active;
+        if (active) {
+            pttButton.classList.add('active');
+            pttButton.innerText = "YAYINDA...";
+            statusDisplay.innerText = "KONUŞUYORSUNUZ (TX)";
+            statusDisplay.className = "status-box status-tx";
+        } else {
+            pttButton.classList.remove('active');
+            pttButton.innerText = "BAS KONUŞ";
+            statusDisplay.innerText = "DİNLEMEDESİNİZ (RX)";
+            statusDisplay.className = "status-box status-online";
+        }
     }
 
-    function stopTransmission() {
-        if (!localTrack) return;
-        localTrack.enabled = false; // Sesi kapat
-        pttButton.classList.remove('active');
-        pttButton.innerText = "BAS KONUŞ";
-        statusLight.className = "status-light online";
-        statusInfo.innerText = "DİNLEMEDE (RX)";
-    }
-
-    // Mobil ve Masaüstü için olay dinleyiciler
-    pttButton.addEventListener('mousedown', startTransmission);
-    pttButton.addEventListener('mouseup', stopTransmission);
-    pttButton.addEventListener('touchstart', (e) => { e.preventDefault(); startTransmission(); });
-    pttButton.addEventListener('touchend', (e) => { e.preventDefault(); stopTransmission(); });
+    pttButton.addEventListener('mousedown', () => setMic(true));
+    pttButton.addEventListener('mouseup', () => setMic(false));
+    pttButton.addEventListener('touchstart', (e) => { e.preventDefault(); setMic(true); });
+    pttButton.addEventListener('touchend', (e) => { e.preventDefault(); setMic(false); });
 
 </script>
 </body>
